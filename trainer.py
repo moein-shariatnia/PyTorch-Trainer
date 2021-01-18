@@ -1,8 +1,7 @@
 import torch
 from torch import nn, optim
-import torch.nn.functional as F
-from torch.utils.data import Dataset
 
+import copy
 from tqdm import tqdm
 from tools import AvgMeter
 
@@ -13,40 +12,77 @@ class Model(nn.Module):
         self.optimizer = None
         self.lr_scheduler = None
         self.current_epoch = None
+        self.current_lr = None
+        self.current_batch = 0
+        self.best_model_weights = None
+        self.best_loss = float("inf")
 
     def fit(
-        self, train_dataset, valid_dataset, criterion, epochs, batch_size, device="cuda"
+        self,
+        train_dataset,
+        valid_dataset,
+        criterion,
+        epochs,
+        batch_size,
+        device="cuda",
+        file_name="model.pt",
     ):
         train_loader, valid_loader = self.build_loaders(
             train_dataset, valid_dataset, batch_size
         )
         self.device = torch.device(device)
         self.criterion = criterion
-        self.to(self.devcie)
+        self.to(self.device)
 
         self.set_optimizer()
         self.set_lr_scheduler()
 
-        for i in range(epochs):
-            self.current_epoch = i + 1
+        self.best_model_weights = copy.deepcopy(self.state_dict())
+
+        for epoch in range(epochs):
+            self.current_epoch = epoch + 1
+            print("*" * 30)
             print(f"Epoch {self.current_epoch}")
-            print(f"Current Learning Rate: {self.get_lr():.4f}")
-            print("*" * 20)
+            self.current_lr = self.get_lr()
+            print(f"Current Learning Rate: {self.current_lr:.4f}")
             self.train()
             train_loss, train_metrics = self.one_epoch(train_loader, mode="train")
             self.eval()
             with torch.no_grad():
                 valid_loss, valid_metrics = self.one_epoch(valid_loader, mode="valid")
-            # print loss and metric
-            print("*" * 20)
 
-        # Logic to handle Saving the best model and lr_scheduler
+            self.epoch_end(valid_loss, valid_metrics, file_name=file_name)
+            self.log_metrics(train_loss, train_metrics, valid_loss, valid_metrics)
+            print("*" * 30)
+
+    def epoch_end(self, valid_loss, valid_metrics, file_name):
+        if valid_loss.avg < self.best_loss:
+            self.best_loss = valid_loss.avg
+            self.best_model_weights = copy.deepcopy(self.state_dict())
+            torch.save(self.state_dict(), file_name)
+            print("Saved best model!")
+        
+        if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+            self.lr_scheduler.step(valid_loss.avg)
+            if self.current_lr != self.get_lr():
+                print("Loading best model weights!")
+                self.load_state_dict(torch.load(file_name, map_location=self.device))
+    
+    def log_metrics(self, train_loss, train_metrics, valid_loss, valid_metrics):
+        print(f"Train Loss: {train_loss.avg:.4f}")
+        for key, value in train_metrics.items():
+            print(f"Train {key}: {value.avg:.4f}")
+        print(f"Valid Loss: {valid_loss.avg:.4f}")
+        for key, value in valid_metrics.items():
+            print(f"Valid {key}: {value.avg:.4f}")
+
 
     def one_epoch(self, loader, mode):
         metrics = {}
         loss_meter = AvgMeter()
         for xb, yb in tqdm(loader):
-            xb, yb = xb.to(device), yb.to(device)
+            self.current_batch += 1
+            xb, yb = xb.to(self.device), yb.to(self.device)
             preds = self(xb)
             loss = self.criterion(preds, yb)
             if mode == "train":
@@ -58,6 +94,7 @@ class Model(nn.Module):
 
             loss_meter.update(loss.item(), count=xb.size(0))
             metrics = self.update_metrics(preds.detach(), yb, metrics)
+            self.current_batch = 0
 
         return loss_meter, metrics
 
@@ -87,13 +124,4 @@ class Model(nn.Module):
     def get_lr(self):
         for param_group in self.optimizer.param_groups:
             return param_group["lr"]
-
-
-from torchvision.models import resnet18
-
-device = torch.device("cuda")
-model = resnet18(pretrained=False).to(device)
-
-print(device)
-print(next(model.parameters()).device == device)
 
