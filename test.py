@@ -19,13 +19,24 @@ class MyModel(Model):
         return self.model(x)
 
     def update_metrics(self, preds, target):
-        metrics = self.metrics[self.current_epoch]
+        metrics_ = self.get_metrics()
+        metrics = metrics_[self.current_epoch]
         if metrics.get("Accuracy", None) == None:
-            metrics["Accuracy"] = AvgMeter()
+            metrics["Accuracy"] = AvgMeterVector(10)
+            metrics["F1_Score"] = AvgMeterVector(10)
+        preds = preds.argmax(dim=1).cpu()
+        target = target.cpu()
+        counts = pd.Series(target).value_counts().to_dict()
+        preds_onehot = F.one_hot(preds, num_classes=10)
+        target_onehot = F.one_hot(target, num_classes=10)
 
-        preds = preds.argmax(dim=1)
-        accuracy = (preds == target).float().mean()
-        metrics["Accuracy"].update(accuracy, count=preds.size(0))
+        f1_list, acc_list = [], []
+        for i in range(3):
+            f1_list.append(f1_score(target_onehot[:, i], preds_onehot[:, i]))
+            acc_list.append(accuracy_score(target_onehot[:, i], preds_onehot[:, i]))
+        
+        metrics["Accuracy"].update(acc_list, counts)
+        metrics["F1_Score"].update(f1_list, counts)
 
 
 transforms = Transforms.Compose([Transforms.ToTensor(),])
