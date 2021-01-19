@@ -18,14 +18,14 @@ class MyModel(Model):
         x = torch.cat([x] * 3, dim=1)
         return self.model(x)
 
-    def update_metrics(self, preds, target, metrics):
-        if self.current_batch == 1:
+    def update_metrics(self, preds, target):
+        metrics = self.metrics[self.current_epoch]
+        if metrics.get("Accuracy", None) == None:
             metrics["Accuracy"] = AvgMeter()
 
         preds = preds.argmax(dim=1)
         accuracy = (preds == target).float().mean()
         metrics["Accuracy"].update(accuracy, count=preds.size(0))
-        return metrics
 
 
 transforms = Transforms.Compose([Transforms.ToTensor(),])

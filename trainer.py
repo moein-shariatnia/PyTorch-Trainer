@@ -38,6 +38,7 @@ class Model(nn.Module):
         self.set_lr_scheduler()
 
         self.best_model_weights = copy.deepcopy(self.state_dict())
+        self.metrics = {"train": {}, "valid": {}}
 
         for epoch in range(epochs):
             self.current_epoch = epoch + 1
@@ -46,16 +47,16 @@ class Model(nn.Module):
             self.current_lr = self.get_lr()
             print(f"Current Learning Rate: {self.current_lr:.4f}")
             self.train()
-            train_loss, train_metrics = self.one_epoch(train_loader, mode="train")
+            train_loss = self.one_epoch(train_loader, mode="train")
             self.eval()
             with torch.no_grad():
-                valid_loss, valid_metrics = self.one_epoch(valid_loader, mode="valid")
+                valid_loss = self.one_epoch(valid_loader, mode="valid")
 
-            self.epoch_end(valid_loss, valid_metrics, file_name=file_name)
-            self.log_metrics(train_loss, train_metrics, valid_loss, valid_metrics)
+            self.epoch_end(valid_loss, file_name=file_name)
+            self.log_metrics(train_loss, valid_loss)
             print("*" * 30)
 
-    def epoch_end(self, valid_loss, valid_metrics, file_name):
+    def epoch_end(self, valid_loss, file_name):
         if valid_loss.avg < self.best_loss:
             self.best_loss = valid_loss.avg
             self.best_model_weights = copy.deepcopy(self.state_dict())
@@ -68,17 +69,19 @@ class Model(nn.Module):
                 print("Loading best model weights!")
                 self.load_state_dict(torch.load(file_name, map_location=self.device))
     
-    def log_metrics(self, train_loss, train_metrics, valid_loss, valid_metrics):
+    def log_metrics(self, train_loss, valid_loss):
         print(f"Train Loss: {train_loss.avg:.4f}")
-        for key, value in train_metrics.items():
-            print(f"Train {key}: {value.avg:.4f}")
+        for key, value in self.metrics["train"][self.current_epoch].items():
+            print(f"Train {key}: {value}")
         print(f"Valid Loss: {valid_loss.avg:.4f}")
-        for key, value in valid_metrics.items():
-            print(f"Valid {key}: {value.avg:.4f}")
+        for key, value in self.metrics["valid"][self.current_epoch].items():
+            print(f"Valid {key}: {value}")
 
 
     def one_epoch(self, loader, mode):
-        metrics = {}
+        metrics = self.get_metrics()
+        if metrics.get(self.current_epoch, None) == None:
+           metrics[self.current_epoch] = {}
         loss_meter = AvgMeter()
         for xb, yb in tqdm(loader):
             self.current_batch += 1
@@ -93,14 +96,17 @@ class Model(nn.Module):
                     self.lr_scheduler.step()
 
             loss_meter.update(loss.item(), count=xb.size(0))
-            metrics = self.update_metrics(preds.detach(), yb, metrics)
+            self.update_metrics(preds.detach(), yb)
             self.current_batch = 0
 
-        return loss_meter, metrics
+        return loss_meter
 
-    def update_metrics(self, preds, target, metrics):
+    def get_metrics(self):
+        return self.metrics["train"] if self.training else self.metrics["valid"]
+    
+    def update_metrics(self, preds, target):
         # Logic to handle metrics calc.
-        return metrics
+        raise Exception()
 
     def set_optimizer(self):
         self.optimizer = optim.Adam(
@@ -124,4 +130,3 @@ class Model(nn.Module):
     def get_lr(self):
         for param_group in self.optimizer.param_groups:
             return param_group["lr"]
-
