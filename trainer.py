@@ -101,12 +101,24 @@ class Model(nn.Module):
 
         return loss_meter
 
+    def predict(self, dataset, n=8, file_name="model.pt", device="cuda"):
+        device = torch.device(device)
+        self.to(device)
+        self.load_state_dict(torch.load(file_name, map_location=device))
+        loader = torch.utils.data.DataLoader(dataset, batch_size=n)
+        self.eval()
+        xb, yb = next(iter(loader))
+        with torch.no_grad():
+            preds = self(xb.to(device)).detach().cpu()
+        
+        return xb, preds, yb
+
     def get_metrics(self):
         return self.metrics["train"] if self.training else self.metrics["valid"]
     
     def update_metrics(self, preds, target):
         # Logic to handle metrics calc.
-        raise Exception()
+        pass
 
     def set_optimizer(self):
         self.optimizer = optim.Adam(
