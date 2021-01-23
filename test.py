@@ -1,10 +1,15 @@
+import pandas as pd
+
 import torch
 from torch import nn, optim
 from torch.utils.data import Dataset
+import torch.nn.functional as F
 from torchvision import datasets, models, transforms as Transforms
 
 from trainer import Model
-from tools import AvgMeter
+from tools import AvgMeter, AvgMeterVector
+
+from sklearn.metrics import f1_score, accuracy_score
 
 
 class MyModel(Model):
@@ -34,7 +39,7 @@ class MyModel(Model):
         for i in range(3):
             f1_list.append(f1_score(target_onehot[:, i], preds_onehot[:, i]))
             acc_list.append(accuracy_score(target_onehot[:, i], preds_onehot[:, i]))
-        
+
         metrics["Accuracy"].update(acc_list, counts)
         metrics["F1_Score"].update(f1_list, counts)
 
@@ -52,15 +57,21 @@ valid_dataset = datasets.MNIST(
 class MyDataset(Dataset):
     def __init__(self, dataset):
         self.data = [data for data in dataset]
-    
+
     def __getitem__(self, index):
         return self.data[index]
-    
+
     def __len__(self):
         return len(self.data)
 
+
 model = MyModel()
 model.fit(
-    MyDataset(train_dataset), MyDataset(valid_dataset), nn.CrossEntropyLoss(), 5, 512, file_name="mnist.pt"
+    MyDataset(train_dataset),
+    MyDataset(valid_dataset),
+    nn.CrossEntropyLoss(),
+    5,
+    512,
+    file_name="mnist.pt",
 )
 

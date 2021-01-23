@@ -24,6 +24,7 @@ class Model(nn.Module):
         criterion,
         epochs,
         batch_size,
+        learning_rate=1e-4,
         device="cuda",
         file_name="model.pt",
     ):
@@ -34,7 +35,7 @@ class Model(nn.Module):
         self.criterion = criterion
         self.to(self.device)
 
-        self.set_optimizer()
+        self.set_optimizer(learning_rate)
         self.set_lr_scheduler()
 
         self.best_model_weights = copy.deepcopy(self.state_dict())
@@ -101,11 +102,11 @@ class Model(nn.Module):
 
         return loss_meter
 
-    def predict(self, dataset, n=8, file_name="model.pt", device="cuda"):
+    def predict(self, dataset, n=8, file_name="model.pt", device="cuda", shuffle=True):
         device = torch.device(device)
         self.to(device)
         self.load_state_dict(torch.load(file_name, map_location=device))
-        loader = torch.utils.data.DataLoader(dataset, batch_size=n)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=n, shuffle=shuffle)
         self.eval()
         xb, yb = next(iter(loader))
         with torch.no_grad():
@@ -120,9 +121,9 @@ class Model(nn.Module):
         # Logic to handle metrics calc.
         pass
 
-    def set_optimizer(self):
+    def set_optimizer(self, learning_rate):
         self.optimizer = optim.Adam(
-            self.parameters(), lr=1e-4
+            self.parameters(), lr=learning_rate
         )  # Hard coded optimizer! Review needed
 
     def set_lr_scheduler(self):
