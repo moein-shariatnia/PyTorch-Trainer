@@ -3,7 +3,7 @@ from torch import nn, optim
 
 import copy
 from tqdm import tqdm
-from tools import AvgMeter
+from tools import AvgMeter, process_metrics, plot_statistics
 
 
 class Model(nn.Module):
@@ -16,6 +16,8 @@ class Model(nn.Module):
         self.current_batch = 0
         self.best_model_weights = None
         self.best_loss = float("inf")
+        self.loss = {"train": {}, "valid": {}}
+        self.metrics = {"train": {}, "valid": {}}
 
     def fit(
         self,
@@ -39,7 +41,6 @@ class Model(nn.Module):
         self.set_lr_scheduler()
 
         self.best_model_weights = copy.deepcopy(self.state_dict())
-        self.metrics = {"train": {}, "valid": {}}
 
         for epoch in range(epochs):
             self.current_epoch = epoch + 1
@@ -53,8 +54,11 @@ class Model(nn.Module):
             with torch.no_grad():
                 valid_loss = self.one_epoch(valid_loader, mode="valid")
 
+            self.loss["train"][self.current_epoch] = train_loss.avg
+            self.loss["valid"][self.current_epoch] = valid_loss.avg
+
             self.epoch_end(valid_loss, file_name=file_name)
-            self.log_metrics(train_loss, valid_loss)
+            self.log_metrics()
             print("*" * 30)
 
     def epoch_end(self, valid_loss, file_name):
@@ -63,26 +67,25 @@ class Model(nn.Module):
             self.best_model_weights = copy.deepcopy(self.state_dict())
             torch.save(self.state_dict(), file_name)
             print("Saved best model!")
-        
+
         if isinstance(self.lr_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
             self.lr_scheduler.step(valid_loss.avg)
             if self.current_lr != self.get_lr():
                 print("Loading best model weights!")
                 self.load_state_dict(torch.load(file_name, map_location=self.device))
-    
-    def log_metrics(self, train_loss, valid_loss):
-        print(f"Train Loss: {train_loss.avg:.4f}")
+
+    def log_metrics(self):
+        print(f"Train Loss: {self.loss['train'][self.current_epoch]:.6f}")
         for key, value in self.metrics["train"][self.current_epoch].items():
             print(f"Train {key}: {value}")
-        print(f"Valid Loss: {valid_loss.avg:.4f}")
+        print(f"Valid Loss: {self.loss['valid'][self.current_epoch]:.6f}")
         for key, value in self.metrics["valid"][self.current_epoch].items():
             print(f"Valid {key}: {value}")
-
 
     def one_epoch(self, loader, mode):
         metrics = self.get_metrics()
         if metrics.get(self.current_epoch, None) == None:
-           metrics[self.current_epoch] = {}
+            metrics[self.current_epoch] = {}
         loss_meter = AvgMeter()
         for xb, yb in tqdm(loader):
             self.current_batch += 1
@@ -111,12 +114,12 @@ class Model(nn.Module):
         xb, yb = next(iter(loader))
         with torch.no_grad():
             preds = self(xb.to(device)).detach().cpu()
-        
+
         return xb, preds, yb
 
     def get_metrics(self):
         return self.metrics["train"] if self.training else self.metrics["valid"]
-    
+
     def update_metrics(self, preds, target):
         # Logic to handle metrics calc.
         pass
@@ -128,7 +131,7 @@ class Model(nn.Module):
 
     def set_lr_scheduler(self):
         self.lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.5, patience=5
+            self.optimizer, mode="min", factor=0.5, patience=3
         )
 
     def build_loaders(self, train_dataset, valid_dataset, batch_size):
@@ -143,3 +146,11 @@ class Model(nn.Module):
     def get_lr(self):
         for param_group in self.optimizer.param_groups:
             return param_group["lr"]
+
+    def plot_loss(self, file_name="Loss.png"):
+        plot_statistics(self.loss, name="Loss", mode="min", file_name=file_name)
+
+    def plot_metric(self, metric_name="Accuracy", mode="max", file_name="Metric.png"):
+        metrics = process_metrics(self.metrics, metric_name)
+        plot_statistics(metrics, name=metric_name, mode=mode, file_name=file_name)
+
