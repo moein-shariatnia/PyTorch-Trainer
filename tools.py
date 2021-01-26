@@ -71,10 +71,22 @@ def plot_statistics(data, name="Loss", mode="min", file_name="stats.png"):
     plt.sca(ax)
     plt.plot(epochs, train_stats, c="k", label="train")
     plt.plot(epochs, valid_stats, c="r", label="valid")
+
+    x_scale = max(epochs)
+    y_scale = max(max(train_stats), max(valid_stats))
+    if mode == "max":
+        y_scale = - y_scale
+
+    train_x_offset = best_train[0] - x_scale * 0.15
+    train_y_offset = best_train[1] + y_scale * 0.3
+
+    valid_x_offset = best_valid[0] + x_scale * 0.15
+    valid_y_offset = best_valid[1] + y_scale * 0.3 
+
     plt.annotate(
         f"Best Valid {name}: {best_valid[1]:.4f}",
         xy=(best_valid[0], best_valid[1]),
-        xytext=(best_valid[0] - len(epochs) * 0.1, best_valid[1] + len(epochs) * 0.03),
+        xytext=(valid_x_offset, valid_y_offset),
         ha="center",
         arrowprops=dict(facecolor="red", shrink=0.1),
         fontsize=12,
@@ -82,7 +94,7 @@ def plot_statistics(data, name="Loss", mode="min", file_name="stats.png"):
     plt.annotate(
         f"Best Train {name}: {best_train[1]:.4f}",
         xy=(best_train[0], best_train[1]),
-        xytext=(best_train[0] - len(epochs) * 0.1, best_train[1]),
+        xytext=(train_x_offset, train_y_offset),
         ha="center",
         arrowprops=dict(facecolor="black", shrink=0.1),
         fontsize=12,
@@ -95,3 +107,4 @@ def plot_statistics(data, name="Loss", mode="min", file_name="stats.png"):
     plt.tight_layout()
 
     fig.savefig(file_name, facecolor="white")
+    return best_valid[1]

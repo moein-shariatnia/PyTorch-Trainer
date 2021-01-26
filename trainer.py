@@ -148,9 +148,11 @@ class Model(nn.Module):
             return param_group["lr"]
 
     def plot_loss(self, file_name="Loss.png"):
-        plot_statistics(self.loss, name="Loss", mode="min", file_name=file_name)
+        best_valid = plot_statistics(self.loss, name="Loss", mode="min", file_name=file_name)
+        return best_valid
 
     def plot_metric(self, metric_name="Accuracy", mode="max", file_name="Metric.png"):
         metrics = process_metrics(self.metrics, metric_name)
-        plot_statistics(metrics, name=metric_name, mode=mode, file_name=file_name)
+        best_valid = plot_statistics(metrics, name=metric_name, mode=mode, file_name=file_name)
+        return best_valid
 
